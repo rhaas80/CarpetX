@@ -1671,16 +1671,14 @@ void SetupGlobals() {
     }
 
     // Allocate data
+    int const varsize = CCTK_VarTypeSize(group.vartype);
     const nan_handling_t nan_handling = arraygroupdata.do_checkpoint
                                             ? nan_handling_t::forbid_nans
                                             : nan_handling_t::allow_nans;
     arraygroupdata.data.resize(group.numtimelevels);
     arraygroupdata.valid.resize(group.numtimelevels);
     for (int tl = 0; tl < int(arraygroupdata.data.size()); ++tl) {
-      arraygroupdata.data.at(tl).resize(
-          amrex::Box(amrex::IntVect(arraygroupdata.lbnd),
-                     amrex::IntVect(arraygroupdata.ubnd)),
-          arraygroupdata.numvars);
+      arraygroupdata.data.at(tl).alloc(arraygroupdata.numvars * arraygroupdata.array_size * varsize);
       why_valid_t why([]() { return "SetupGlobals"; });
       arraygroupdata.valid.at(tl).resize(arraygroupdata.numvars, why);
       for (int vi = 0; vi < arraygroupdata.numvars; ++vi) {
@@ -2161,6 +2159,10 @@ YAML::Emitter &operator<<(YAML::Emitter &yaml,
 YAML::Emitter &
 operator<<(YAML::Emitter &yaml,
            const GHExt::GlobalData::ArrayGroupData &arraygroupdata) {
+  cGroup group;
+  int ierr = CCTK_GroupData(arraygroupdata.groupindex, &group);
+  assert(!ierr);
+
   yaml << YAML::LocalTag("arraygroupdata-1.0.0");
   yaml << YAML::BeginMap;
   yaml << YAML::Key << "commongroupdata" << YAML::Value
@@ -2168,8 +2170,23 @@ operator<<(YAML::Emitter &yaml,
   yaml << YAML::Key << "data" << YAML::Value << YAML::Flow << YAML::BeginSeq;
   for (int tl = 0; tl < int(arraygroupdata.data.size()); ++tl) {
     yaml << YAML::BeginSeq;
-    for (int vi = 0; vi < arraygroupdata.numvars; ++vi)
-      yaml << *arraygroupdata.data.at(tl).dataPtr(vi);
+    for (int vi = 0; vi < arraygroupdata.numvars; ++vi) {
+      // TODO: should data actually be output???
+      switch(group.vartype) {
+        case CCTK_VARIABLE_REAL:
+          yaml << static_cast<const CCTK_REAL*>(arraygroupdata.data.at(tl).get())[vi * arraygroupdata.array_size];
+          break;
+        case CCTK_VARIABLE_INT:
+          yaml << static_cast<const CCTK_INT*>(arraygroupdata.data.at(tl).get())[vi * arraygroupdata.array_size];
+          break;
+        case CCTK_VARIABLE_COMPLEX:
+          yaml << static_cast<const CCTK_COMPLEX*>(arraygroupdata.data.at(tl).get())[vi * arraygroupdata.array_size];
+          break;
+        default:
+          assert(0 && "Unexpected variable type");
+          break;
+      }
+    }
     yaml << YAML::EndSeq;
   }
   yaml << YAML::EndSeq;

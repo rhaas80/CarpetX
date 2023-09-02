@@ -159,7 +159,45 @@ struct GHExt {
     // we assume that grid scalars only hold "analysis" data.
 
     struct ArrayGroupData : public CommonGroupData {
-      vector<amrex::FArrayBox> data; // [time level]
+      class arenaData {
+        public:
+          arenaData() : ptr(nullptr) {}
+          ~arenaData() { if(ptr) amrex::The_Arena()->free(ptr); }
+          arenaData(arenaData&& other) : ptr(other.ptr) { other.ptr = nullptr; }
+          arenaData(const arenaData&) = delete;
+          arenaData& operator=(const arenaData&) = delete;
+          arenaData& operator=(arenaData&& other) { std::swap(ptr, other.ptr); return *this; }
+
+          void alloc(size_t n) {
+            assert(!ptr);
+            ptr = amrex::The_Arena()->alloc(n);
+          }
+          // NOTE: no deallocator
+
+          void* get() { return ptr; }
+          const void* get() const { return ptr; }
+
+        private:
+          void* ptr;
+      };
+      vector<arenaData> data; // [time level]
+      void* dataPtr(const int timelevel, const int varindex) {
+        cGroup group;
+        int ierr = CCTK_GroupData(groupindex, &group);
+        assert(!ierr);
+
+        int varsize = CCTK_VarTypeSize(group.vartype);
+        return static_cast<void*>(static_cast<char*>(data.at(timelevel).get()) + varindex * array_size * varsize);
+      }
+      const void* dataPtr(const int timelevel, const int varindex) const {
+        cGroup group;
+        int ierr = CCTK_GroupData(groupindex, &group);
+        assert(!ierr);
+
+        int varsize = CCTK_VarTypeSize(group.vartype);
+        return static_cast<const void*>(static_cast<const char*>(data.at(timelevel).get()) + varindex * array_size * varsize);
+      }
+
       int array_size;
       int dimension;
       int activetimelevels;

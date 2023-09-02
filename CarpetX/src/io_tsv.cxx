@@ -136,6 +136,9 @@ void WriteTSVScalars(const cGH *restrict cctkGH, const string &filename,
     return;
 
   const auto &arraygroupdata = *ghext->globaldata.arraygroupdata.at(gi);
+  cGroup group;
+  int ierr = CCTK_GroupData(gi, &group);
+  assert(!ierr);
 
   vector<string> varnames;
   for (int vi = 0; vi < arraygroupdata.numvars; ++vi)
@@ -158,7 +161,20 @@ void WriteTSVScalars(const cGH *restrict cctkGH, const string &filename,
   file << cctkGH->cctk_iteration << sep << cctkGH->cctk_time;
   const int tl = 0;
   for (int vi = 0; vi < arraygroupdata.numvars; ++vi)
-    file << sep << *arraygroupdata.data.at(tl).dataPtr(vi);
+    switch(group.vartype) {
+      case CCTK_VARIABLE_REAL:
+        file << sep << *static_cast<const CCTK_REAL*>(arraygroupdata.dataPtr(tl, vi));
+        break;
+      case CCTK_VARIABLE_INT:
+        file << sep << *static_cast<const CCTK_INT*>(arraygroupdata.dataPtr(tl, vi));
+        break;
+      case CCTK_VARIABLE_COMPLEX:
+        file << sep << *static_cast<const CCTK_COMPLEX*>(arraygroupdata.dataPtr(tl, vi));
+        break;
+      default:
+        assert(0 && "Unexpected variable type");
+        break;
+    }
   file << "\n";
 }
 
@@ -169,6 +185,9 @@ void WriteTSVArrays(const cGH *restrict cctkGH, const string &filename,
     return;
 
   const auto &arraygroupdata = *ghext->globaldata.arraygroupdata.at(gi);
+  cGroup group;
+  int ierr = CCTK_GroupData(gi, &group);
+  assert(!ierr);
 
   if (out_dir >= arraygroupdata.dimension)
     return;
@@ -207,7 +226,20 @@ void WriteTSVArrays(const cGH *restrict cctkGH, const string &filename,
       file << sep << (dir == out_dir ? i : 0);
     const int tl = 0;
     for (int vi = 0; vi < arraygroupdata.numvars; ++vi)
-      file << sep << arraygroupdata.data.at(tl).dataPtr(vi)[DI[out_dir] * i];
+      switch(group.vartype) {
+        case CCTK_VARIABLE_REAL:
+          file << sep << static_cast<const CCTK_REAL*>(arraygroupdata.dataPtr(tl, vi))[DI[out_dir] * i];
+          break;
+        case CCTK_VARIABLE_INT:
+          file << sep << static_cast<const CCTK_INT*>(arraygroupdata.dataPtr(tl, vi))[DI[out_dir] * i];
+          break;
+        case CCTK_VARIABLE_COMPLEX:
+          file << sep << static_cast<const CCTK_COMPLEX*>(arraygroupdata.dataPtr(tl, vi))[DI[out_dir] * i];
+          break;
+        default:
+          assert(0 && "Unexpected variable type");
+          break;
+      }
     file << "\n";
   }
 }

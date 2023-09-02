@@ -425,19 +425,24 @@ void poison_invalid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
   static Timer timer("poison_invalid<GA>");
   Interval interval(timer);
 
-  CCTK_REAL poison;
-  std::memcpy(&poison, &ipoison, sizeof poison);
+  cGroup group;
+  int ierr = CCTK_GroupData(arraygroupdata.groupindex, &group);
+  assert(!ierr);
+  int const varsize = CCTK_VarTypeSize(group.vartype);
+  std::vector<char> poison(varsize);
+  for(int i = 0 ; i < varsize ; i += sizeof ipoison)
+    std::memcpy(&poison[i], &ipoison, std::min(sizeof ipoison, size_t(varsize - i)));
 
   if (!valid.valid_int) {
     int dimension = arraygroupdata.dimension;
-    CCTK_REAL *restrict const ptr =
-        const_cast<CCTK_REAL *>(arraygroupdata.data.at(tl).dataPtr(vi));
+    char *restrict const ptr =
+        static_cast<char*>(const_cast<void *>(arraygroupdata.dataPtr(tl, vi)));
     const int *gsh = arraygroupdata.gsh;
     int n_elems = 1;
     for (int i = 0; i < dimension; i++)
       n_elems *= gsh[i];
     for (int i = 0; i < n_elems; i++)
-      ptr[i] = poison;
+      memcpy(ptr + i * varsize, poison.data(), varsize);
   }
 }
 
@@ -456,27 +461,56 @@ void check_valid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
   static Timer timer("check_valid<GA>");
   Interval interval(timer);
 
-  CCTK_REAL poison;
-  std::memcpy(&poison, &ipoison, sizeof poison);
+  cGroup group;
+  int ierr = CCTK_GroupData(arraygroupdata.groupindex, &group);
+  assert(!ierr);
+
+  // there is no magic "nan" value for integers
+  if(group.vartype == CCTK_VARIABLE_INT)
+    return;
+
+  int const varsize = CCTK_VarTypeSize(group.vartype);
+  std::vector<char> poison(varsize);
+  for(int i = 0 ; i < varsize ; i += sizeof ipoison)
+    std::memcpy(&poison[i], &ipoison, std::min(sizeof ipoison, size_t(varsize - i)));
 
   // arrays have no boundary so we expect them to alway be valid
   assert(valid.valid_outer && valid.valid_ghosts);
 
   size_t nan_count{0};
   if (valid.valid_int) {
-    const CCTK_REAL *restrict const ptr =
-        arraygroupdata.data.at(tl).dataPtr(vi);
     int dimension = arraygroupdata.dimension;
     const int *gsh = arraygroupdata.gsh;
     int n_elems = 1;
     for (int i = 0; i < dimension; i++)
       n_elems *= gsh[i];
-    for (int i = 0; i < n_elems; i++) {
-      if (CCTK_BUILTIN_EXPECT(nan_handling == nan_handling_t::allow_nans
-                                  ? std::memcmp(ptr, &poison, sizeof *ptr) == 0
-                                  : isnan(*ptr),
-                              false))
-        ++nan_count;
+    switch(group.vartype) {
+      case CCTK_VARIABLE_REAL: {
+        const CCTK_REAL *restrict const ptr =
+          static_cast<const CCTK_REAL*>(arraygroupdata.dataPtr(tl, vi));
+        for (int i = 0; i < n_elems; i++) {
+          if (CCTK_BUILTIN_EXPECT(nan_handling == nan_handling_t::allow_nans
+                                      ? std::memcmp(ptr + i, poison.data(), sizeof(CCTK_REAL)) == 0
+                                      : isnan(ptr[i]),
+                                  false))
+            ++nan_count;
+        }
+        } break;
+      case CCTK_VARIABLE_COMPLEX: {
+        const CCTK_COMPLEX *restrict const ptr =
+          static_cast<const CCTK_COMPLEX*>(arraygroupdata.dataPtr(tl, vi));
+        for (int i = 0; i < n_elems; i++) {
+          if (CCTK_BUILTIN_EXPECT(nan_handling == nan_handling_t::allow_nans
+                                      ? (std::memcmp(&reinterpret_cast<const CCTK_REAL*>(ptr)[2*i], poison.data(), sizeof(CCTK_REAL)) == 0 ||
+                                         std::memcmp(&reinterpret_cast<const CCTK_REAL*>(ptr)[2*i + 1], poison.data() + sizeof(CCTK_REAL), sizeof(CCTK_REAL)) == 0)
+                                      : (isnan(ptr[i].real()) || isnan(ptr[i].imag())),
+                                  false))
+            ++nan_count;
+        }
+        } break;
+      default:
+        assert(0 && "Unexpected Cactus variable type");
+        break;
     }
   }
 
