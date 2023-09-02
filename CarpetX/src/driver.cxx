@@ -2130,6 +2130,13 @@ YAML::Emitter &operator<<(YAML::Emitter &yaml, const amrex::AmrCore &amrcore) {
 } // namespace amrex
 namespace CarpetX {
 
+YAML::Emitter &operator<<(YAML::Emitter &yaml, const CCTK_COMPLEX &v) {
+  yaml << YAML::Flow << YAML::BeginSeq;
+  yaml << v.real() << v.imag();
+  yaml << YAML::EndSeq;
+  return yaml;
+}
+
 YAML::Emitter &operator<<(YAML::Emitter &yaml,
                           const GHExt::CommonGroupData &commongroupdata) {
   yaml << YAML::LocalTag("commongroupdata-1.0.0");
