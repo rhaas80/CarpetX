@@ -431,6 +431,7 @@ void poison_invalid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
 
   assert(vi >= 0 && vi < group.numvars);
 
+  // TODO: replace this with a union of the 3 possible variables and a switch...
   int const varsize = CCTK_VarTypeSize(group.vartype);
   std::vector<char> poison(varsize);
   for(int i = 0 ; i < varsize ; i += sizeof ipoison)
@@ -474,6 +475,7 @@ void check_valid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
   if(group.vartype == CCTK_VARIABLE_INT)
     return;
 
+  // TODO: replace this with a union of the 3 possible variables and a switch...
   int const varsize = CCTK_VarTypeSize(group.vartype);
   std::vector<char> poison(varsize);
   for(int i = 0 ; i < varsize ; i += sizeof ipoison)
