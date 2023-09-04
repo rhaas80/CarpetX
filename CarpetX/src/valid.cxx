@@ -428,6 +428,9 @@ void poison_invalid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
   cGroup group;
   int ierr = CCTK_GroupData(arraygroupdata.groupindex, &group);
   assert(!ierr);
+
+  assert(vi >= 0 && vi < group.numvars);
+
   int const varsize = CCTK_VarTypeSize(group.vartype);
   std::vector<char> poison(varsize);
   for(int i = 0 ; i < varsize ; i += sizeof ipoison)
@@ -464,6 +467,8 @@ void check_valid(const GHExt::GlobalData::ArrayGroupData &arraygroupdata,
   cGroup group;
   int ierr = CCTK_GroupData(arraygroupdata.groupindex, &group);
   assert(!ierr);
+
+  assert(vi >= 0 && vi < group.numvars);
 
   // there is no magic "nan" value for integers
   if(group.vartype == CCTK_VARIABLE_INT)
